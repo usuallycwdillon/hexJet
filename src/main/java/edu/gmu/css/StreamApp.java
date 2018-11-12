@@ -9,7 +9,6 @@ import edu.gmu.css.service.Neo4jSessionFactory;
 import org.geojson.Feature;
 import org.geojson.FeatureCollection;
 import org.neo4j.helpers.collection.MapUtil;
-import org.neo4j.ogm.session.Neo4jSession;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.transaction.Transaction;
 
@@ -18,7 +17,6 @@ import java.io.FileInputStream;
 import java.io.InputStream;
 import java.time.LocalTime;
 import java.util.*;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 
@@ -34,6 +32,7 @@ public class StreamApp {
 
 
     public static void main( String[] args ) {
+        // Adding a few printouts to ease monitoring
         LocalTime startTime = LocalTime.now();
         System.out.println("The factory started working at: " + startTime);
 
@@ -46,7 +45,7 @@ public class StreamApp {
             List<Feature> features = geoJsonProcessor(filename);
 
             List<Territory> territoryList = features.stream()
-                    .map(feature -> new Territory((Feature)feature, y))
+                    .map(feature -> new Territory(feature, y))
                     .collect(Collectors.toList());
 
             d.addAllFacts(territoryList);
@@ -90,29 +89,6 @@ public class StreamApp {
             e.printStackTrace();
         }
         return features;
-    }
-
-    private static Map.Entry<String, Territory> featureEntryProcessor(Feature feature, int year) {
-        Territory territory = new Territory(feature, year);
-
-        Map.Entry<String, Territory> entry = new Map.Entry<String, Territory>() {
-            @Override
-            public String getKey() {
-                return territory.getName() + " of " + year;
-            }
-
-            @Override
-            public Territory getValue() {
-                return territory;
-            }
-
-            @Override
-            public Territory setValue(Territory value) {
-                return territory;
-            }
-        };
-
-        return entry;
     }
 
     private void joinHexes() {
