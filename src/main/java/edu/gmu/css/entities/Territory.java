@@ -24,6 +24,7 @@ public class Territory extends Entity implements Serializable {
     Map<Long, Tile> globalHexes = StreamApp.globalHexes;
 
     @Id @GeneratedValue (strategy = NameIdStrategy.class)
+    String mapKey;
 //    Long id;
     String name;
     Long creationDate;
@@ -31,7 +32,6 @@ public class Territory extends Entity implements Serializable {
     Double area = 0.0;
     int year;
     int resolution;
-    String mapKey;
 
     List<Long> hexList;
 

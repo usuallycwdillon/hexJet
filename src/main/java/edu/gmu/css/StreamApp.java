@@ -44,19 +44,18 @@ public class StreamApp {
 
             List<Feature> features = geoJsonProcessor(filename);
 
-            List<Territory> territoryList = features.stream()
+            d.addAllFacts(features.stream()
                     .map(feature -> new Territory(feature, y))
-                    .collect(Collectors.toList());
+                    .collect(Collectors.toList()));
 
-            d.addAllFacts(territoryList);
-
-            for (Territory t : territoryList) {
+            for (Territory t : d.getFacts()) {
                 Session session = Neo4jSessionFactory.getInstance().getNeo4jSession();
                 Transaction tx = session.beginTransaction();
                 session.save(t, 2);
                 tx.commit();
-                session.clear();
                 System.out.println("Saved " + t.getMapKey() + " to the database at " + LocalTime.now());
+
+                territories.put(t.getMapKey(), t);
             }
 
             Session session = Neo4jSessionFactory.getInstance().getNeo4jSession();
@@ -72,11 +71,11 @@ public class StreamApp {
         for (int year : geodatasets.keySet()) {
             new StreamApp().findTerritoryNeighbors(year);
         }
+        System.exit(0);
 
     }
 
     private static List<Feature> geoJsonProcessor(String filename) {
-
         // Parse the GeoJSON file
         String filepath = "src/main/resources/historicalBasemaps/" + filename;
         File file = new File(filepath);
@@ -96,30 +95,26 @@ public class StreamApp {
         System.out.println("The time is " + LocalTime.now() + " and it's about to lattice them hexes...");
 
         Iterator it = globalHexes.entrySet().iterator();
-
         while (it.hasNext()) {
             Map.Entry pair = (Map.Entry) it.next();
             updateHexNeighbors((Long)pair.getKey());
-
         }
 
         if (missingHexes.size() != 0) {
             globalHexes.putAll(missingHexes);
         }
-
         System.out.println("There were " + missingHexes.size() + " missing hex Tiles.");
     }
 
     private void findTerritoryNeighbors(int year) {
-
         System.out.println("The simulation is ready to find territory neighbors for " + year + " at: " + LocalTime.now());
 
         String query = "MATCH (t1:Territory{year:{year}})-[:OCCUPATION_OF]->(h1:Tile)-[:ABUTS]-(h2:Tile)<-[:OCCUPATION_OF]-(t2:Territory{year:{year}})\n" +
                 "WHERE t1 <> t2 AND t1.year = t2.year\n" +
-                "MATCH (y:Year{name:toString({year})})\n" +
-                "WITH t1, t2, y\n" +
                 "MERGE (t1)-[b:BORDERS{during:{year}}]->(t2)\n" +
-                "MERGE (t1)-[d:DURING]->(y)\n" +
+                "WITH t1, t2\n" +
+                "MATCH (y:Year{name:toString({year})})\n" +
+                "MERGE (y)-[d:DURING]->(t1)\n" +
                 "MERGE (t2)-[e:DURING]->(y)";
 
         Neo4jSessionFactory.getInstance().getNeo4jSession().query(query, MapUtil.map("year", year));
@@ -127,11 +122,10 @@ public class StreamApp {
 
     private void updateHexNeighbors(Long h) {
         Tile tile = globalHexes.get(h);
-
         for (Long n : tile.getNeighborIds()) {
             if (globalHexes.containsKey(n)) {
                 Tile neighbor = globalHexes.get(n);
-                tile.addNeighbor(globalHexes.get(n));
+                tile.addNeighbor(neighbor);
             } else {
                 Tile newHex = new Tile(n);
                 missingHexes.put(n, newHex);
@@ -144,5 +138,6 @@ public class StreamApp {
         tx.commit();
         session.clear();
     }
+
 
 }

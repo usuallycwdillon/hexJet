@@ -11,6 +11,6 @@ public class NameIdStrategy implements IdStrategy {
     @Override
     public Object generateId(Object entity) {
         Territory territory = (Territory) entity;
-        return territory.getName();
+        return territory.getMapKey();
     }
 }

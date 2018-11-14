@@ -21,8 +21,6 @@ public class Tile extends Entity implements Serializable {
      */
     @Id @GeneratedValue (strategy = H3IdStrategy.class)
     private Long h3Id;
-
-    @Index(unique = true)
     private String address;
 
     @Relationship(type="ABUTS", direction = Relationship.UNDIRECTED)
@@ -57,6 +55,7 @@ public class Tile extends Entity implements Serializable {
             H3Core h3 = H3Core.newInstance();
             this.neighborIds = h3.kRing(h3Id, 1);
             this.neighborIds.remove(h3Id);
+            // unrelated, but I'm taking advantage of having already initiated an H3 instance
             this.address = h3.h3ToString(h3Id);
         } catch (IOException e) {
             e.printStackTrace();
