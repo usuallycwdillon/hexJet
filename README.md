@@ -80,6 +80,7 @@ Completed 1815 at 16:33:55.503
 Saved Buganda of 1880 to the database at 16:34:03.640
 Saved Griqualand West of 1880 to the database at 16:34:04.772
 ```
+
 . . . 
 
 ```
@@ -91,3 +92,6 @@ Saved Poland of 1945 to the database at 17:23:54.251
 ```
 
 . . . 
+
+Some territories take barely 0.1 sec while others take 3 or 4 min.
+ 
