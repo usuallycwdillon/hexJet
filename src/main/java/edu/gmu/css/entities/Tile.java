@@ -1,7 +1,6 @@
 package edu.gmu.css.entities;
 
 import com.uber.h3core.H3Core;
-import edu.gmu.css.entities.Entity;
 import edu.gmu.css.service.H3IdStrategy;
 import org.neo4j.ogm.annotation.*;
 

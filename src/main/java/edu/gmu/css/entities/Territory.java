@@ -3,16 +3,12 @@ package edu.gmu.css.entities;
 import com.uber.h3core.H3Core;
 import com.uber.h3core.util.GeoCoord;
 import edu.gmu.css.StreamApp;
-import edu.gmu.css.entities.Tile;
 import edu.gmu.css.service.NameIdStrategy;
 import org.geojson.Feature;
 import org.geojson.LngLatAlt;
 import org.geojson.MultiPolygon;
 import org.jetbrains.annotations.NotNull;
-import org.neo4j.ogm.annotation.GeneratedValue;
-import org.neo4j.ogm.annotation.Id;
-import org.neo4j.ogm.annotation.NodeEntity;
-import org.neo4j.ogm.annotation.Relationship;
+import org.neo4j.ogm.annotation.*;
 import sim.engine.SimState;
 
 import java.io.Serializable;
@@ -25,18 +21,25 @@ public class Territory extends Entity implements Serializable {
 
     @Id @GeneratedValue (strategy = NameIdStrategy.class)
     String mapKey;
-//    Long id;
+    @Property
     String name;
+    @Property
+    String cowcode;
+    @Property
     Long creationDate;
+    @Property
     String abbr;
+    @Property
     Double area = 0.0;
-    int year;
-    int resolution;
+    @Property
+    Integer year;
+    @Property
+    Integer resolution;
 
-    List<Long> hexList;
+    Set<Long> hexList;
 
     @Relationship(type="OCCUPATION_OF")
-    Set<Tile> hexSet;
+    Set<OccupationOf> hexSet;
 
     @Relationship(type="BORDERS")
     Set<Territory> neighbors;
@@ -48,7 +51,7 @@ public class Territory extends Entity implements Serializable {
         this.name = "Unnamed";
         this.area = 0.0;
         this.hexSet = new HashSet<>();
-        this.hexList = new ArrayList<>();
+        this.hexList = new HashSet<>();
     }
 
     public Territory(String name, String abbr, Double area, int year, int resolution) {
@@ -81,7 +84,16 @@ public class Territory extends Entity implements Serializable {
         this.abbr = input.getProperty("WB_CNTRY");
         this.year = year;
         this.mapKey = name + " of " + year;
-        if (input.getProperty("AREA") != null) {this.area = input.getProperty("AREA");} else {this.area = 0.0;}
+        if (input.getProperty("AREA") != null) {
+            this.area = input.getProperty("AREA");
+        } else {
+            this.area = 0.0;
+        }
+        if (input.getProperty("CCODE") != null) {
+            this.cowcode = "" + input.getProperty("CCODE");
+        } else {
+            this.cowcode = "";
+        }
         buildTerritory(input);
     }
 
@@ -95,6 +107,22 @@ public class Territory extends Entity implements Serializable {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getAbbr() {
+        return abbr;
+    }
+
+    public void setAbbr(String abbr) {
+        this.abbr = abbr;
+    }
+
+    public String getCowcode() {
+        return cowcode;
+    }
+
+    public void setCowcode(String cowcode) {
+        this.cowcode = cowcode;
     }
 
     public Double getArea() {
@@ -121,13 +149,16 @@ public class Territory extends Entity implements Serializable {
         return mapKey;
     }
 
-    public Set<Tile> getHexSet() {
+    public Set<OccupationOf> getHexSet() {
         return hexSet;
     }
 
-    public List<Long> getHexList() { return hexList; }
+    public Set<Long> getHexList() { return hexList; }
 
-    public void addHex(Tile hex) {this.hexSet.add(hex);}
+    public void addHex(Tile hex) {
+        OccupationOf o = new OccupationOf(this, hex, year);
+        this.hexSet.add(o);
+    }
 
     public Set<Territory> getNeighbors() {
         return neighbors;
@@ -151,9 +182,10 @@ public class Territory extends Entity implements Serializable {
         MultiPolygon geom = (MultiPolygon) inputFeature.getGeometry();
         int numPolygons = geom.getCoordinates().size();
 
+        Set<Long> tempList5 = new HashSet<>();
+
         for (int i = 0; i < numPolygons; i++) {
             List<List<GeoCoord>> holes = new ArrayList<>();
-
             int numInnerLists = geom.getCoordinates().get(i).size();
 
             List<LngLatAlt> coordinates = geom.getCoordinates().get(i).get(0);
@@ -168,24 +200,15 @@ public class Territory extends Entity implements Serializable {
 
             try {
                 H3Core h3 = H3Core.newInstance();
-                if (area == null) {
-                    System.out.println("The area is null");
-                }
-                if (name == null) {
-                    System.out.println("The name is null");
-                }
-                if (area < 40000.0 && !name.equals("Russian Empire of " + year)) {
-                    hexList = new ArrayList<>(h3.polyfill(boundaryCoordinates, holes, resolution));
-                } else {
-                    int res = resolution - 1;
-                    List<Long> bigList = new ArrayList<>(h3.polyfill(boundaryCoordinates, holes, res));
-                    if (bigList.size() < 1) {
-                        hexList = new ArrayList<>(h3.polyfill(boundaryCoordinates, holes, resolution));
-                    }
-                    for (Long s : bigList) {
-                        hexList.addAll(h3.h3ToChildren(s, resolution));
+                tempList5.addAll(h3.polyfill(boundaryCoordinates, holes, resolution + 1));
+                for (Long t5 : tempList5) {
+                    Long t5Parent = h3.h3ToParent(t5, resolution);
+                    List<Long> t5Siblings = h3.h3ToChildren(t5Parent, resolution + 1);
+                    if (tempList5.contains(t5Siblings.get(0))) {
+                        hexList.add(t5Parent);
                     }
                 }
+
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -201,18 +224,24 @@ public class Territory extends Entity implements Serializable {
         return h3Coords;
     }
 
-    public Set<Tile> getTilesFromAddresses() {
-        Set<Tile> tiles = new HashSet<>();
+    public Set<OccupationOf> getTilesFromAddresses() {
+        Set<OccupationOf> tiles = new HashSet<>();
         for (Long h : hexList) {
             if (globalHexes.containsKey(h)) {
                 Tile t = globalHexes.get(h);
-                tiles.add(t);
+                this.occupation(t);
             } else  {
                 Tile t = new Tile(h);
                 globalHexes.put(h, t);
-                tiles.add(t);
+                this.occupation(t);
             }
         }
         return tiles;
+    }
+
+    public OccupationOf occupation(Tile tile) {
+        OccupationOf occupied = new OccupationOf(this, tile, year);
+        this.hexSet.add(occupied);
+        return occupied;
     }
 }

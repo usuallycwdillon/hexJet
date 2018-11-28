@@ -1,13 +1,14 @@
 package edu.gmu.css;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uber.h3core.H3Core;
+import com.uber.h3core.util.GeoCoord;
 import edu.gmu.css.data.DatasetData;
 import edu.gmu.css.entities.Dataset;
 import edu.gmu.css.entities.Territory;
 import edu.gmu.css.entities.Tile;
 import edu.gmu.css.service.Neo4jSessionFactory;
-import org.geojson.Feature;
-import org.geojson.FeatureCollection;
+import org.geojson.*;
 import org.neo4j.helpers.collection.MapUtil;
 import org.neo4j.ogm.session.Session;
 import org.neo4j.ogm.transaction.Transaction;
@@ -23,9 +24,6 @@ import java.util.stream.Collectors;
 public class StreamApp {
 
     private static Map<Integer, Dataset> geodatasets = DatasetData.GEODATASETS;
-    private static int resolution = 4;
-    private static int unclaimedIndex = 0;
-
     public static Map<String, Territory> territories = new HashMap<>();
     public static Map<Long, Tile> globalHexes = new HashMap<>();
     public static Map<Long, Tile> missingHexes = new HashMap<>();
@@ -37,24 +35,22 @@ public class StreamApp {
         System.out.println("The factory started working at: " + startTime);
 
         for (Map.Entry entry : geodatasets.entrySet()) {
-
             int y = (int)entry.getKey();
             Dataset d = (Dataset) entry.getValue();
             String filename = "cowWorld_" + y + ".geojson";
 
             List<Feature> features = geoJsonProcessor(filename);
-
             d.addAllFacts(features.stream()
+                    .filter(feature -> !feature.getProperty("NAME").equals("Antarctica"))
                     .map(feature -> new Territory(feature, y))
                     .collect(Collectors.toList()));
 
             for (Territory t : d.getFacts()) {
                 Session session = Neo4jSessionFactory.getInstance().getNeo4jSession();
                 Transaction tx = session.beginTransaction();
-                session.save(t, 2);
+                session.save(t, 1);
                 tx.commit();
                 System.out.println("Saved " + t.getMapKey() + " to the database at " + LocalTime.now());
-
                 territories.put(t.getMapKey(), t);
             }
 
@@ -71,6 +67,13 @@ public class StreamApp {
         for (int year : geodatasets.keySet()) {
             new StreamApp().findTerritoryNeighbors(year);
         }
+
+        System.out.println("\n...making geojson files...");
+        Collection<Territory> territoryStream = territories.values().stream()
+                .filter(t -> !t.getName().equals("Antarctica"))
+                .collect(Collectors.toList());
+        makeFeatureCollection(territoryStream);
+
         System.exit(0);
 
     }
@@ -91,15 +94,12 @@ public class StreamApp {
     }
 
     private void joinHexes() {
-
         System.out.println("The time is " + LocalTime.now() + " and it's about to lattice them hexes...");
-
         Iterator it = globalHexes.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry pair = (Map.Entry) it.next();
             updateHexNeighbors((Long)pair.getKey());
         }
-
         if (missingHexes.size() != 0) {
             globalHexes.putAll(missingHexes);
         }
@@ -137,6 +137,59 @@ public class StreamApp {
         session.save(tile, 1);
         tx.commit();
         session.clear();
+    }
+
+    private static void makeFeatureCollection(Collection<Territory> territories) {
+        for (Territory t : territories) {
+            FeatureCollection featureCollection = new FeatureCollection();
+            String key = t.getMapKey();
+            String filepath = "src/main/resources/historicalHexMaps/" + t.getYear() + "/" + key + ".geojson";
+            Feature territoryFeature = makeFeatures(t);
+            featureCollection.add(territoryFeature);
+            ObjectMapper geoFeature = new ObjectMapper();
+            try {
+                geoFeature.writeValue(new File(filepath), featureCollection);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+
+    private static Feature makeFeatures(Territory t) {
+        Set<Long> hexList = new HashSet<>(t.getHexList());
+        Feature territoryFeature = new Feature();
+        MultiPolygon multiPolyTerritory = new MultiPolygon();
+
+        try {
+            H3Core h3 = H3Core.newInstance();
+            for (Long h : hexList) {
+                Polygon poly = new Polygon();
+                List<GeoCoord> outerPolyCoords = h3.h3ToGeoBoundary(h);
+                List<LngLatAlt> lngLatAlts = new ArrayList<>();
+                for (GeoCoord gc : outerPolyCoords) {
+                    lngLatAlts.add(lngLatAlt(gc));
+                }
+                poly.setExteriorRing(lngLatAlts);
+                multiPolyTerritory.add(poly);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        territoryFeature.setGeometry(multiPolyTerritory);
+        territoryFeature.setProperty("NAME", t.getName());
+        territoryFeature.setProperty("ABBR", t.getAbbr());
+        territoryFeature.setProperty("CCODE", t.getCowcode());
+        territoryFeature.setProperty("YEAR", t.getYear());
+
+        return territoryFeature;
+    }
+
+    static private LngLatAlt lngLatAlt(GeoCoord coordinates) {
+        LngLatAlt lla = new LngLatAlt();
+        lla.setLatitude(coordinates.lat);
+        lla.setLongitude(coordinates.lng);
+        return lla;
     }
 
 
